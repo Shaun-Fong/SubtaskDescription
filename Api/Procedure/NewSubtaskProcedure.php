@@ -10,7 +10,7 @@ use Kanboard\Api\Procedure\BaseProcedure;
  * Subtask API controller
  *
  * @package  Kanboard\Plugin\Subtaskdescription
- * @author   Craig Crosby
+ * @author   ShaunFong / Craig Crosby
  */
 class NewSubtaskProcedure extends BaseProcedure
 {
