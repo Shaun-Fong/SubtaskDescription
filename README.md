@@ -89,7 +89,9 @@ Response example:
         "result": true
     }
 
-
+Authors
+------------
+Manuel Raposo / Craig Crosby / Shaun Fong
 
 Requirements
 ------------
