@@ -1,4 +1,4 @@
-SubTask Markdown Description
+SubTask Description
 ===============
 
 Requirements
