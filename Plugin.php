@@ -6,7 +6,6 @@ use Kanboard\Core\Plugin\Base;
 use Kanboard\Core\Translator;
 use Kanboard\Model\TaskModel;
 use Kanboard\Model\SubtaskModel;
-use Kanboard\Plugin\Subtaskdescription\Api\Procedure\NewSubtaskProcedure;
 use PicoDb\Table;
 use PicoDb\Database;
 use JsonRPC\Server;
@@ -43,10 +42,6 @@ class Plugin extends Base
         $this->template->hook->attach('template:board:tooltip:subtasks:header:before-assignee', 'Subtaskdescription:subtask/table_header');
         $this->template->hook->attach('template:board:tooltip:subtasks:rows', 'Subtaskdescription:subtask/table_rows');
         
-        // API 
-        $this->api->getProcedureHandler()->withClassAndMethod('createSubtaskdd', new NewSubtaskProcedure($this->container), 'createSubtaskdd');
-        $this->api->getProcedureHandler()->withClassAndMethod('updateSubtaskdd', new NewSubtaskProcedure($this->container), 'updateSubtaskdd');
-        
     }
     public function onStartup()
     {
@@ -55,23 +50,17 @@ class Plugin extends Base
 
     public function beforeSave(array &$values)
     {
-        //$values = $this->dateParser->convert($values, array('due_description'));
         $this->helper->model->resetFields($values, array('due_description'));
-    }
-
-     public function applyDateFilter(Table $query)
-    {
-        $query->lte(SubtaskModel::TABLE.'.due_description', time());
     }
 
     public function getPluginName()
     {
-        return 'SubtaskDueDescription';
+        return 'SubtaskDescription';
     }
 
     public function getPluginDescription()
     {
-        return t('Add a new due description field to subtasks');
+        return t('Add a description field to subtasks');
     }
 
     public function getPluginAuthor()
@@ -81,7 +70,7 @@ class Plugin extends Base
 
     public function getPluginVersion()
     {
-        return '1.0.0';
+        return '1.0.1';
     }
 
     public function getPluginHomepage()
