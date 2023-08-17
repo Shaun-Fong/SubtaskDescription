@@ -17,4 +17,4 @@ Installation
 
 Note: Plugin folder is case-sensitive.
 
-PS: This plugin base on `Subtaskdata`, I saw the author complain on the forum that I stole the code, look ,I don't have time to study the code carefully, to study how the whole Kanboard works, I'm just a game developer, I just need to make this little tool work and all I did this also kind to help more people.Finally, I want to say that I don't use kanboard anymore, hope everyone can be kind to others.
+PS: This plugin base on `Subtaskdate`, I saw the author complain on the forum that I stole the code, look ,I don't have time to study the code carefully, to study how the whole Kanboard works, I'm just a game developer, I just need to make this little tool work and all I did this also kind to help more people.Finally, I want to say that I don't use kanboard anymore, hope everyone can be kind to others.
