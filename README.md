@@ -15,4 +15,6 @@ Installation
 2. Download the zip file and decompress everything under the directory `plugins/Subtaskdescription`
 3. Clone this repository into the folder `plugins/Subtaskdescription`
 
-Note: Plugin folder is case-sensitive. This repo will no longer be maintained, PR is welcome!
+Note: Plugin folder is case-sensitive.
+
+`This repo will no longer be maintained, but PRs are welcome!`
