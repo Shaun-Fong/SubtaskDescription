@@ -122,10 +122,34 @@ function report(): int
 
     foreach ($failed as $message) {
         echo "  - {$message}\n";
+        echo "::error title=Failed check::{$message}\n";
     }
 
     return 1;
 }
+
+// Surface crashes and failed assertions as GitHub annotations: the raw log of a
+// workflow run is only visible to authenticated users, while annotations are
+// rendered on the public job page.
+set_exception_handler(static function (Throwable $e): void {
+    $message = str_replace("\n", ' ', get_class($e).': '.$e->getMessage());
+
+    fwrite(STDERR, $message."\n".$e->getTraceAsString()."\n");
+    echo "::error title=Test suite crashed::{$message}\n";
+
+    exit(255);
+});
+
+register_shutdown_function(static function (): void {
+    $error = error_get_last();
+
+    if ($error === null || ! in_array($error['type'], array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR), true)) {
+        return;
+    }
+
+    $message = str_replace("\n", ' ', $error['message'].' in '.$error['file'].':'.$error['line']);
+    echo "::error title=Test suite crashed::{$message}\n";
+});
 
 section('Environment');
 
@@ -287,23 +311,54 @@ check('board tooltip hook renders the description', strpos($tooltipRows, '<stron
 
 section('Model round-trip');
 
-$projectId = $container['projectModel']->create(array('name' => 'SubtaskDescription integration test'));
-check('test project was created', is_int($projectId) && $projectId > 0);
+$projectId = 0;
+
+try {
+    $projectId = (int) $container['projectModel']->create(array('name' => 'SubtaskDescription integration test'));
+} catch (Throwable $e) {
+    info('test project creation failed: '.get_class($e).': '.$e->getMessage());
+}
+
+check('test project was created', $projectId > 0);
+
+if ($projectId <= 0) {
+    exit(report());
+}
 
 $columnId = (int) $container['columnModel']->getFirstColumnId($projectId);
 check('test project has a board column', $columnId > 0);
 
-// tasks.column_id and tasks.swimlane_id are NOT NULL without a default on
-// MySQL and PostgreSQL, so the fixture row has to provide both. The default
-// swimlane of a fresh project is the virtual swimlane with id 0.
-$taskId = $db->table('tasks')->persist(array(
-    'title' => 'SubtaskDescription integration test task',
-    'project_id' => $projectId,
-    'column_id' => $columnId,
-    'swimlane_id' => 0,
-    'date_creation' => time(),
-));
-check('test task was created', is_int($taskId) && $taskId > 0);
+// ProjectModel::create() creates the project's default swimlane as well. Using
+// its real id keeps the fixture row valid under the foreign keys that MySQL and
+// PostgreSQL enforce (tasks.swimlane_id => swimlanes.id).
+$swimlaneId = (int) $db->table('swimlanes')
+    ->eq('project_id', $projectId)
+    ->asc('position')
+    ->findOneColumn('id');
+check('test project has a default swimlane', $swimlaneId > 0);
+
+// tasks.column_id and tasks.swimlane_id are NOT NULL without a default on MySQL
+// and PostgreSQL, and both are foreign keys, so the fixture row has to point at
+// the rows the project creation produced.
+$taskId = 0;
+
+try {
+    $taskId = (int) $db->table('tasks')->persist(array(
+        'title' => 'SubtaskDescription integration test task',
+        'project_id' => $projectId,
+        'column_id' => $columnId,
+        'swimlane_id' => $swimlaneId,
+        'date_creation' => time(),
+    ));
+} catch (Throwable $e) {
+    info('fixture task insert failed: '.get_class($e).': '.$e->getMessage());
+}
+
+check('test task was created', $taskId > 0);
+
+if ($taskId <= 0) {
+    exit(report());
+}
 
 $subtaskModel = $container['subtaskModel'];
 
