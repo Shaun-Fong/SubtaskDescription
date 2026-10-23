@@ -51,6 +51,13 @@ class Plugin extends Base
     public function beforeSave(array &$values)
     {
         $this->helper->model->resetFields($values, array('due_description'));
+
+        // MySQL cannot give a TEXT column a default value, so a subtask created
+        // without this field (API calls, programme code) would otherwise fail
+        // with "Field 'due_description' doesn't have a default value".
+        if (! isset($values['due_description'])) {
+            $values['due_description'] = '';
+        }
     }
 
     public function getPluginName()
