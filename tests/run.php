@@ -290,9 +290,17 @@ section('Model round-trip');
 $projectId = $container['projectModel']->create(array('name' => 'SubtaskDescription integration test'));
 check('test project was created', is_int($projectId) && $projectId > 0);
 
+$columnId = (int) $container['columnModel']->getFirstColumnId($projectId);
+check('test project has a board column', $columnId > 0);
+
+// tasks.column_id and tasks.swimlane_id are NOT NULL without a default on
+// MySQL and PostgreSQL, so the fixture row has to provide both. The default
+// swimlane of a fresh project is the virtual swimlane with id 0.
 $taskId = $db->table('tasks')->persist(array(
     'title' => 'SubtaskDescription integration test task',
     'project_id' => $projectId,
+    'column_id' => $columnId,
+    'swimlane_id' => 0,
     'date_creation' => time(),
 ));
 check('test task was created', is_int($taskId) && $taskId > 0);
