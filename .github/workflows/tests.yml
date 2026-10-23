@@ -156,7 +156,7 @@ jobs:
           set -euo pipefail
           target="$KANBOARD_DIR/plugins/Subtaskdescription"
           mkdir -p "$target"
-          cp -R Plugin.php Schema Template LICENSE "$target"/
+          cp -R Plugin.php Api Schema Template LICENSE "$target"/
 
       - name: Run the plugin test suite
         env:

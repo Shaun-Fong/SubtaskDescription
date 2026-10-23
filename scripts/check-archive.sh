@@ -35,6 +35,7 @@ fi
 
 expected=(
     'Subtaskdescription/Plugin.php'
+    'Subtaskdescription/Api/Procedure/SubtaskDescriptionProcedure.php'
     'Subtaskdescription/Schema/Mysql.php'
     'Subtaskdescription/Schema/Postgres.php'
     'Subtaskdescription/Schema/Sqlite.php'
