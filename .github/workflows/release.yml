@@ -1,0 +1,172 @@
+name: Release
+
+# Publishes a new plugin version to GitHub Releases.
+#
+# Flow:
+#   1. Bump getPluginVersion() in Plugin.php and merge it.
+#   2. Create and push an annotated tag that matches the version, e.g. v1.2.0.
+#   3. This workflow verifies that the tag matches Plugin.php, runs the plugin
+#      test suite against the latest Kanboard, builds the installable archive
+#      with the Makefile and creates the GitHub release with that archive.
+#
+# An existing release can be rebuilt or re-uploaded with the "Run workflow"
+# button by passing its tag (for example v1.2.0).
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to publish or rebuild (e.g. v1.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  KANBOARD_REPOSITORY: https://github.com/kanboard/kanboard.git
+
+jobs:
+  verify:
+    name: Verify the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve the tag and the plugin version
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+
+          if ! printf '%s' "$tag" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Invalid release tag '$tag', expected v<major>.<minor>.<patch>"
+            exit 1
+          fi
+
+          version="$(awk '/function getPluginVersion/,/}/' Plugin.php \
+            | grep -oE "return '[^']+'" | head -n 1 | cut -d\' -f2)"
+
+          if [ -z "$version" ]; then
+            echo "::error::Unable to read getPluginVersion() from Plugin.php"
+            exit 1
+          fi
+
+          if [ "$tag" != "v$version" ]; then
+            echo "::error::Tag $tag does not match the plugin version $version (expected tag v$version)"
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing $version from tag $tag"
+
+      - name: Ensure the tag contains the test suite
+        run: |
+          if [ ! -f tests/run.php ]; then
+            echo "::error::tests/run.php is missing from this tag; tags created before the test suite cannot be published by this workflow"
+            exit 1
+          fi
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: gd, mbstring, xml, dom, simplexml, pdo_sqlite, sqlite3
+          coverage: none
+
+      - name: Check out the latest Kanboard
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch main "$KANBOARD_REPOSITORY" "$RUNNER_TEMP/kanboard"
+          git -C "$RUNNER_TEMP/kanboard" log -1 --format='Checked out Kanboard %H (%s)'
+
+      - name: Install the plugin into Kanboard
+        run: |
+          set -euo pipefail
+          target="$RUNNER_TEMP/kanboard/plugins/Subtaskdescription"
+          mkdir -p "$target"
+          cp -R Plugin.php Schema Template LICENSE "$target"/
+
+      - name: Run the plugin test suite
+        env:
+          KANBOARD_DIR: ${{ runner.temp }}/kanboard
+          DB_DRIVER: sqlite
+          DB_FILENAME: ${{ runner.temp }}/kanboard/data/db.sqlite
+          LOG_DRIVER: stdout
+        run: php tests/run.php
+
+  build:
+    name: Publish
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Build the release archive
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: make all version="$VERSION"
+
+      - name: Validate the archive layout
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: bash scripts/check-archive.sh "Subtaskdescription-${VERSION}.zip"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.verify.outputs.tag }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          asset="Subtaskdescription-${VERSION}.zip"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, replacing $asset"
+            gh release upload "$TAG" "$asset" --clobber
+          else
+            gh release create "$TAG" "$asset" \
+              --title "SubTask Description ${VERSION}" \
+              --generate-notes \
+              --verify-tag
+          fi
+
+      - name: Write the job summary
+        env:
+          TAG: ${{ needs.verify.outputs.tag }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          {
+            echo "### SubTask Description ${VERSION}"
+            echo
+            echo "- Tag: \`${TAG}\`"
+            echo "- Archive: \`Subtaskdescription-${VERSION}.zip\`"
+            echo "- Release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+          } >> "$GITHUB_STEP_SUMMARY"

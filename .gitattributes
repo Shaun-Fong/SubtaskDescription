@@ -1,0 +1,9 @@
+# Files that are needed to develop or test the plugin but must not be shipped
+# inside the installable archive. `make all` uses `git archive`, which honours
+# these export-ignore rules.
+/.github        export-ignore
+/scripts        export-ignore
+/tests          export-ignore
+/Makefile       export-ignore
+/.gitattributes export-ignore
+/.gitignore     export-ignore

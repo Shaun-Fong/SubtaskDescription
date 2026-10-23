@@ -1,0 +1,188 @@
+name: Tests
+
+# Runs the plugin against the *latest* Kanboard on every push and pull request.
+#
+# The Kanboard checkout is managed entirely inside the workflow: nothing has to
+# be installed locally and no Kanboard copy is vendored in this repository.
+# A weekly scheduled run catches breakage caused by upstream Kanboard changes
+# even when this repository is idle.
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Mondays, 03:17 UTC.
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  KANBOARD_REPOSITORY: https://github.com/kanboard/kanboard.git
+
+jobs:
+  lint:
+    name: Lint · PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The whole supported PHP range of Kanboard >= 1.2.
+        php: ['8.1', '8.2', '8.3', '8.4']
+    steps:
+      - name: Check out the plugin
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Check PHP syntax
+        run: |
+          set -euo pipefail
+          status=0
+          while IFS= read -r -d '' file; do
+            if ! output=$(php -l "$file" 2>&1); then
+              printf '%s\n' "$output"
+              status=1
+            fi
+          done < <(find . -name '*.php' -not -path './.git/*' -print0)
+          if [ "$status" -ne 0 ]; then
+            echo "::error::PHP syntax errors found on PHP ${{ matrix.php }}"
+            exit 1
+          fi
+          echo "All PHP files pass php -l on PHP ${{ matrix.php }}"
+
+  integration:
+    name: Kanboard ${{ matrix.kanboard }} · ${{ matrix.database }} · PHP 8.3
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Both database servers are started for every matrix entry; SQLite runs
+    # simply ignore them. Keeping them in one job avoids duplicating the
+    # bootstrap steps for three databases.
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: kanboard
+          MYSQL_USER: kanboard
+          MYSQL_PASSWORD: kanboard
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=24
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: kanboard
+          POSTGRES_USER: kanboard
+          POSTGRES_PASSWORD: kanboard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -h 127.0.0.1 -U kanboard -d kanboard"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=24
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kanboard: main
+            database: sqlite
+            db_port: ''
+          - kanboard: main
+            database: mysql
+            db_port: '3306'
+          - kanboard: main
+            database: postgres
+            db_port: '5432'
+          - kanboard: latest-release
+            database: sqlite
+            db_port: ''
+
+    env:
+      KANBOARD_DIR: ${{ github.workspace }}/.kanboard
+      DB_HOSTNAME: 127.0.0.1
+      DB_USERNAME: kanboard
+      DB_PASSWORD: kanboard
+      DB_NAME: kanboard
+      LOG_DRIVER: stdout
+
+    steps:
+      - name: Check out the plugin
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: gd, mbstring, xml, dom, simplexml, pdo_sqlite, sqlite3, pdo_mysql, pdo_pgsql
+          coverage: none
+
+      - name: Check out Kanboard
+        run: |
+          set -euo pipefail
+          ref="${{ matrix.kanboard }}"
+          if [ "$ref" = "latest-release" ]; then
+            ref="$(git ls-remote --tags --refs "$KANBOARD_REPOSITORY" 'v*' \
+              | awk -F/ '{print $NF}' | sort -V | tail -n 1)"
+            if [ -z "$ref" ]; then
+              echo "::error::Unable to resolve the latest Kanboard release"
+              exit 1
+            fi
+            echo "Resolved latest Kanboard release: $ref"
+          fi
+          git clone --depth 1 --branch "$ref" "$KANBOARD_REPOSITORY" "$KANBOARD_DIR"
+          git -C "$KANBOARD_DIR" log -1 --format='Checked out Kanboard %H (%s)'
+
+      - name: Install the plugin into Kanboard
+        run: |
+          set -euo pipefail
+          target="$KANBOARD_DIR/plugins/Subtaskdescription"
+          mkdir -p "$target"
+          cp -R Plugin.php Schema Template LICENSE "$target"/
+
+      - name: Run the plugin test suite
+        env:
+          DB_DRIVER: ${{ matrix.database }}
+          DB_FILENAME: ${{ github.workspace }}/.kanboard/data/db.sqlite
+          DB_PORT: ${{ matrix.db_port }}
+        run: php tests/run.php
+
+      - name: Upload Kanboard logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kanboard-logs-${{ matrix.kanboard }}-${{ matrix.database }}
+          path: .kanboard/data/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  package:
+    name: Release archive
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the plugin
+        uses: actions/checkout@v4
+
+      - name: Build the archive with the Makefile
+        run: make all version=0.0.0-test
+
+      - name: Validate the archive layout
+        run: bash scripts/check-archive.sh Subtaskdescription-0.0.0-test.zip
