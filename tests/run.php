@@ -240,9 +240,14 @@ $schemaRow = $db->table('plugin_schema_versions')
     ->eq('plugin', strtolower($plugin->getPluginName()))
     ->findOne();
 
+// The MySQL schema needs an extra migration (TEXT columns cannot have a
+// default value), so the expected version is read from the loaded driver file.
+$schemaConstant = 'Kanboard\Plugin\Subtaskdescription\Schema\VERSION';
+$expectedSchemaVersion = defined($schemaConstant) ? (int) constant($schemaConstant) : 1;
+
 check(
-    'plugin schema version is recorded as 1',
-    is_array($schemaRow) && isset($schemaRow['version']) && (int) $schemaRow['version'] === 1
+    "plugin schema version matches the driver schema (expected {$expectedSchemaVersion})",
+    is_array($schemaRow) && isset($schemaRow['version']) && (int) $schemaRow['version'] === $expectedSchemaVersion
 );
 
 section('Hooks');
@@ -275,6 +280,27 @@ foreach ($templateHooks as $hookName => $expectedTemplate) {
         "hook {$hookName} renders {$expectedTemplate}",
         in_array($expectedTemplate, $templates, true)
     );
+}
+
+section('API procedures');
+
+$procedureClass = 'Kanboard\Plugin\Subtaskdescription\Api\Procedure\SubtaskDescriptionProcedure';
+
+check('API procedure class is autoloadable', class_exists($procedureClass));
+check(
+    'API procedure extends the Kanboard base procedure',
+    is_subclass_of($procedureClass, 'Kanboard\Api\Procedure\BaseProcedure')
+);
+
+$accessMap = $container['apiProjectAccessMap'];
+
+foreach (array('createSubtaskWithDescription', 'updateSubtaskDescription') as $apiMethod) {
+    $roles = $accessMap->getRoles('SubtaskDescriptionProcedure', $apiMethod);
+    check(
+        "API method {$apiMethod} requires project-member access",
+        in_array('project-member', $roles, true)
+    );
+    info("roles for {$apiMethod}: ".implode(', ', $roles));
 }
 
 section('Template rendering');
@@ -387,6 +413,21 @@ $stored = $db->table('subtasks')->eq('id', $subtaskId)->findOne();
 check(
     'description is stored when a subtask is updated',
     is_array($stored) && $stored['due_description'] === "first line\nsecond line"
+);
+
+// Core updateSubtask() and the web UI's status toggle update a subtask without
+// sending due_description. That must not clear the stored description.
+$toggled = $subtaskModel->update(array(
+    'id' => $subtaskId,
+    'task_id' => $taskId,
+    'status' => 1,
+));
+check('subtask update without a description succeeds', (bool) $toggled);
+
+$preserved = $db->table('subtasks')->eq('id', $subtaskId)->findOne();
+check(
+    'description survives an update that does not send it',
+    is_array($preserved) && $preserved['due_description'] === "first line\nsecond line"
 );
 
 $withoutDescription = $subtaskModel->create(array(

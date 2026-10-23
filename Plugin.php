@@ -3,6 +3,8 @@
 namespace Kanboard\Plugin\Subtaskdescription;
 
 use Kanboard\Core\Plugin\Base;
+use Kanboard\Core\Security\Role;
+use Kanboard\Plugin\Subtaskdescription\Api\Procedure\SubtaskDescriptionProcedure;
 use Kanboard\Core\Translator;
 use Kanboard\Model\TaskModel;
 use Kanboard\Model\SubtaskModel;
@@ -17,8 +19,12 @@ class Plugin extends Base
     {
 
         //Model
-        $this->hook->on('model:subtask:creation:prepare', array($this, 'beforeSave'));
+        $this->hook->on('model:subtask:creation:prepare', array($this, 'beforeCreate'));
         $this->hook->on('model:subtask:modification:prepare', array($this, 'beforeSave'));
+
+        //API - same project role as the core createSubtask/updateSubtask
+        $this->api->getProcedureHandler()->withObject(new SubtaskDescriptionProcedure($this->container));
+        $this->apiProjectAccessMap->add('SubtaskDescriptionProcedure', array('createSubtaskWithDescription', 'updateSubtaskDescription'), Role::PROJECT_MEMBER);
 
         //Forms
         $this->template->hook->attach('template:subtask:form:create', 'Subtaskdescription:subtask/form');
@@ -50,11 +56,16 @@ class Plugin extends Base
 
     public function beforeSave(array &$values)
     {
-        $this->helper->model->resetFields($values, array('due_description'));
+        // Store empty descriptions as '' instead of letting resetFields() turn them into "0".
+        if (array_key_exists('due_description', $values) && $values['due_description'] === null) {
+            $values['due_description'] = '';
+        }
+    }
 
-        // MySQL cannot give a TEXT column a default value, so a subtask created
-        // without this field (API calls, programme code) would otherwise fail
-        // with "Field 'due_description' doesn't have a default value".
+    public function beforeCreate(array &$values)
+    {
+        // MySQL cannot give a TEXT column a default value, and code that creates subtasks
+        // through the API does not pass this field, so always provide a value on insert.
         if (! isset($values['due_description'])) {
             $values['due_description'] = '';
         }
@@ -77,7 +88,7 @@ class Plugin extends Base
 
     public function getPluginVersion()
     {
-        return '1.1.1';
+        return '1.1.2';
     }
 
     public function getPluginHomepage()

@@ -34,6 +34,32 @@ Note: the plugin folder is case-sensitive and must be named `Subtaskdescription`
 - The description is rendered as Markdown in the subtask table of the task details view and in the subtask tooltips on the board.
 - On Kanboard versions up to 1.0.40 the description is also shown in the dashboard subtasks widget.
 
+## API
+
+The core `createSubtask` and `updateSubtask` methods ignore `due_description`, so the plugin adds two JSON-RPC methods.
+They require the same project role as the core subtask methods (project member). `getSubtask` and `getAllSubtasks`
+already return `due_description`.
+
+### createSubtaskWithDescription
+
+Parameters: `task_id` (required), `title` (required), `due_description`, `user_id`, `time_estimated`, `time_spent`, `status`
+
+Result on success: subtask id. Result on failure: `false`
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"createSubtaskWithDescription","params":{"task_id":2139,"title":"Lobby test","due_description":"Check with **4 players**","status":0}}
+```
+
+### updateSubtaskDescription
+
+Parameters: `id` (required), `task_id` (required), `due_description` (required, `""` clears it)
+
+Result on success: `true`. Result on failure: `false`
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"updateSubtaskDescription","params":{"id":42,"task_id":2139,"due_description":"Updated text"}}
+```
+
 ## Development
 
 | Path | Purpose |
