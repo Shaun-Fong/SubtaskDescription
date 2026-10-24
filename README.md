@@ -77,7 +77,7 @@ The test suite is a plain PHP script: it boots a real Kanboard instance, lets th
 schema migration and the hooks run, and checks metadata, schema, hook registration, template rendering
 and subtask create/update round-trips. It supports SQLite, MySQL and PostgreSQL.
 
-Tests are executed by GitHub Actions on every push and pull request â€?no local PHP installation and no
+Tests are executed by GitHub Actions on every push and pull request Ã¢â‚¬?no local PHP installation and no
 Kanboard copy in this repository is needed. The workflow:
 
 - lints every PHP file on PHP 8.1, 8.2, 8.3 and 8.4;
@@ -118,10 +118,10 @@ Releases are produced by the `Release` workflow, not by hand:
    publishes the GitHub release with that archive.
 
 To rebuild or re-upload the archive of an existing release, run the `Release` workflow manually
-(Actions â†?Release â†?Run workflow) and pass the tag (for example `v1.2.0`).
+(Actions Ã¢â€ ?Release Ã¢â€ ?Run workflow) and pass the tag (for example `v1.2.0`).
 
 ## License
 
-MIT â€?see [LICENSE](LICENSE).
+MIT see [LICENSE](LICENSE).
 
 `This repo will no longer be maintained, but PRs are welcome!`
